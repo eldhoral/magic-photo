@@ -5,12 +5,16 @@ export enum AspectRatio {
   WIDE = '16:9'
 }
 
-export interface GeneratedImage {
-  id: string;
-  url: string;
-  theme: string;
-  ratio: AspectRatio;
-  timestamp: number;
+export enum ProductCategory {
+  GENERAL = 'General Product',
+  PERFUME = 'Perfume & Beauty',
+  FOOD = 'Food & Beverage',
+  FASHION = 'Fashion & Accessories',
+  ELECTRONICS = 'Electronics',
+  FURNITURE = 'Furniture & Home',
+  TOYS = 'Toys & Games',
+  FOOTWEAR = 'Footwear',
+  JEWELRY = 'Jewelry & Watches'
 }
 
 export enum ThemeStyle {
@@ -23,8 +27,18 @@ export enum ThemeStyle {
   INDUSTRIAL = 'Industrial Concrete'
 }
 
+export interface GeneratedImage {
+  id: string;
+  url: string;
+  theme: ThemeStyle;
+  ratio: AspectRatio;
+  category: ProductCategory;
+  timestamp: number;
+}
+
 export interface GenerationConfig {
   theme: ThemeStyle;
   ratio: AspectRatio;
+  category: ProductCategory;
   customPrompt?: string;
 }

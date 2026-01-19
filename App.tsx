@@ -3,13 +3,15 @@ import { createRoot } from 'react-dom/client';
 import { FileUploader } from './components/FileUploader';
 import { Button } from './components/Button';
 import { ResultCard } from './components/ResultCard';
-import { ThemeStyle, AspectRatio, GeneratedImage } from './types';
+import { ThemeStyle, AspectRatio, GeneratedImage, ProductCategory } from './types';
 import { generateProductShot } from './services/geminiService';
 
 const App: React.FC = () => {
   const [baseImage, setBaseImage] = useState<string | null>(null);
   const [selectedTheme, setSelectedTheme] = useState<ThemeStyle>(ThemeStyle.CLEAN_STUDIO);
   const [selectedRatio, setSelectedRatio] = useState<AspectRatio>(AspectRatio.SQUARE);
+  const [selectedCategory, setSelectedCategory] = useState<ProductCategory>(ProductCategory.GENERAL);
+  
   const [isGenerating, setIsGenerating] = useState(false);
   const [results, setResults] = useState<GeneratedImage[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -25,26 +27,18 @@ const App: React.FC = () => {
     setIsGenerating(true);
     setError(null);
 
-    // We will generate 3 variations of the selected theme to give "several" options
-    // Or we could generate the same theme multiple times with slight seed variations (implied by API)
-    // For better UX, let's generate the user's selected theme + 2 complementary themes automatically if they haven't generated many yet.
-    // However, to keep it predictable, let's just generate 3 versions of the REQUESTED configuration in parallel calls to simulate "options".
-    
-    // Actually, distinct themes might be better "several" options. 
-    // Let's stick to generating 3 images: 1 with requested theme, and 2 others if the user wants variety, 
-    // BUT the prompt says "transform one base... to several... suited to display".
-    // Usually sellers want 1 consistent style. Let's generate 3 samples of the SELECTED style.
-    
+    // Generate 3 variations based on the user request for "several" options
     const attempts = [1, 2, 3];
 
     try {
       const promises = attempts.map(async (i) => {
-         const url = await generateProductShot(baseImage, selectedTheme, selectedRatio);
+         const url = await generateProductShot(baseImage, selectedTheme, selectedRatio, selectedCategory);
          return url ? {
             id: Date.now().toString() + i,
             url,
             theme: selectedTheme,
             ratio: selectedRatio,
+            category: selectedCategory,
             timestamp: Date.now()
          } : null;
       });
@@ -99,7 +93,22 @@ const App: React.FC = () => {
           <section>
              <h2 className="text-sm font-semibold text-slate-900 mb-3 uppercase tracking-wider">2. Configuration</h2>
              
-             <div className="space-y-4">
+             <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Product Category</label>
+                  <div className="relative">
+                    <select
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value as ProductCategory)}
+                      className="block w-full pl-3 pr-10 py-2.5 text-sm border border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md bg-white shadow-sm"
+                    >
+                      {Object.values(ProductCategory).map((category) => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Style Theme</label>
                     <div className="grid grid-cols-1 gap-2">
@@ -181,7 +190,7 @@ const App: React.FC = () => {
                         </svg>
                     </div>
                     <p className="text-lg font-medium text-slate-600">No images generated yet</p>
-                    <p className="max-w-xs text-center mt-2 text-sm">Upload a product image and select a style to begin transforming your product assets.</p>
+                    <p className="max-w-xs text-center mt-2 text-sm">Upload a product image, select a category and style to begin transforming your product assets.</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6">
