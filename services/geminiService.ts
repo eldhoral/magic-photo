@@ -1,11 +1,18 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AspectRatio, ThemeStyle, ProductCategory, ContentPlanItem } from "../types";
 
-// Prioritize GEMINI_API_KEY, fallback to generic API_KEY if not present
-const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-
-// Note: For Veo, we re-instantiate inside the function to ensure we get the latest selected key if needed
-const ai = new GoogleGenAI({ apiKey });
+// Helper to get key at runtime
+const getApiKey = () => {
+    // Prioritize GEMINI_API_KEY, fallback to generic API_KEY if not present
+    const key = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (!key || key.trim() === '') {
+        // We do NOT throw here immediately for Veo because Veo might use window.aistudio to set it later,
+        // but for standard generation we need it. 
+        // We will return empty string and let individual functions handle it or the SDK throw.
+        return ''; 
+    }
+    return key;
+}
 
 const getThemePrompt = (theme: ThemeStyle, category: ProductCategory): string => {
   const subject = category === ProductCategory.GENERAL ? "product" : category.toLowerCase();
@@ -58,6 +65,11 @@ export const generateProductShot = async (
   modelId: string = 'gemini-2.5-flash-image'
 ): Promise<string | null> => {
   
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("Gemini API Key is missing. Please set GEMINI_API_KEY in your environment.");
+
+  const ai = new GoogleGenAI({ apiKey });
+
   const basePrompt = getThemePrompt(theme, category);
   const categoryInstruction = getCategorySpecificInstruction(category);
   
@@ -168,15 +180,19 @@ export const generateProductVideo = async (
     }
   }
 
+  // 2. Get the latest key (which might have been set by openSelectKey above)
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("API Key required. If using Veo, ensure you've selected a key from the prompt.");
+
   // Always Create new instance to pick up the potentially newly selected key
   const freshAi = new GoogleGenAI({ apiKey: apiKey });
 
-  // 2. Prepare Inputs
+  // 3. Prepare Inputs
   const mimeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
   const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
   const cleanBase64 = base64Image.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
 
-  // 3. Create a Motion-specific prompt based on theme
+  // 4. Create a Motion-specific prompt based on theme
   let motionPrompt = "";
   switch(theme) {
       case ThemeStyle.CLEAN_STUDIO: motionPrompt = "Slow, cinematic camera pan around the product. Professional studio lighting."; break;
@@ -212,14 +228,14 @@ export const generateProductVideo = async (
         }
       });
 
-      // 4. Polling Loop
+      // 5. Polling Loop
       console.log("Polling for video...");
       while (!operation.done) {
         await delay(5000); // Poll every 5 seconds
         operation = await freshAi.operations.getVideosOperation({ operation: operation });
       }
 
-      // 5. Fetch Result
+      // 6. Fetch Result
       if (operation.response?.generatedVideos?.[0]?.video?.uri) {
           const videoUri = operation.response.generatedVideos[0].video.uri;
           // Append Key for download
@@ -247,6 +263,11 @@ export const generateGeminiPlan = async (
   goal: string,
   month: string
 ): Promise<ContentPlanItem[]> => {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("Gemini API Key is missing. Please set GEMINI_API_KEY in your environment.");
+
+  const ai = new GoogleGenAI({ apiKey });
+
   const prompt = `Generate a 30-day Instagram content plan for a brand in the "${niche}" niche. 
     The main goal is "${goal}". 
     For the month of: ${month}.

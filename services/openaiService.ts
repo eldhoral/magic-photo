@@ -1,6 +1,13 @@
 import { AspectRatio, ThemeStyle, ProductCategory, ContentPlanItem } from "../types";
 
-const apiKey = process.env.OPENAI_API_KEY;
+// Helper to get key at runtime and validate
+const getApiKey = () => {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key || key.trim() === '') {
+    throw new Error("OpenAI API Key is missing. Please add OPENAI_API_KEY='sk-...' to your .env file.");
+  }
+  return key;
+};
 
 const getOpenAISize = (ratio: AspectRatio): string => {
   switch (ratio) {
@@ -39,6 +46,7 @@ const getThemePrompt = (theme: ThemeStyle, category: ProductCategory): string =>
 // Step 1: Analyze the uploaded image using a Vision model (GPT-4o, GPT-5, etc.)
 const analyzeProductWithVision = async (base64Image: string, visionModelId: string): Promise<string> => {
   console.log(`Analyzing image with ${visionModelId}...`);
+  const apiKey = getApiKey();
   
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -89,6 +97,8 @@ export const generateOpenAIShot = async (
   category: ProductCategory,
   modelId: string = 'dall-e-3'
 ): Promise<string | null> => {
+  // Validate key early
+  const apiKey = getApiKey();
 
   let prompt = "";
   let finalModel = modelId;
@@ -165,6 +175,7 @@ export const generateOpenAIVideo = async (
   category: ProductCategory,
   modelId: string
 ): Promise<string | null> => {
+  const apiKey = getApiKey();
 
   const themeInstructions = getThemePrompt(theme, category);
   const prompt = `Create a high quality video of the provided product image. ${themeInstructions} The video should be professional, cinematic, and keep the product as the focal point.`;
@@ -212,6 +223,7 @@ export const generateOpenAIPlan = async (
   goal: string,
   month: string
 ): Promise<ContentPlanItem[]> => {
+  const apiKey = getApiKey();
   try {
     const prompt = `Generate a 30-day Instagram content plan for a brand in the "${niche}" niche. 
     The main goal is "${goal}". 
