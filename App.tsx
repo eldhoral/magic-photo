@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { createRoot } from 'react-dom/client';
 import { FileUploader } from './components/FileUploader';
 import { Button } from './components/Button';
 import { ResultCard } from './components/ResultCard';
@@ -211,12 +210,4 @@ const App: React.FC = () => {
   );
 };
 
-const rootElement = document.getElementById('root');
-if (!rootElement) throw new Error('Failed to find the root element');
-
-const root = createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+export default App;
