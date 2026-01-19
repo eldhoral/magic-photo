@@ -4,7 +4,6 @@ import { AspectRatio, ThemeStyle, ProductCategory } from "../types";
 const apiKey = process.env.API_KEY;
 
 // Use gemini-2.5-flash-image for general availability and speed as per guidelines
-// unless High Quality is strictly requested. For this demo, 2.5 is excellent for style transfer.
 const MODEL_NAME = 'gemini-2.5-flash-image';
 
 const ai = new GoogleGenAI({ apiKey });
@@ -49,72 +48,98 @@ const getCategorySpecificInstruction = (category: ProductCategory): string => {
   }
 };
 
+// Helper for delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export const generateProductShot = async (
   base64Image: string,
   theme: ThemeStyle,
   ratio: AspectRatio,
   category: ProductCategory
 ): Promise<string | null> => {
-  try {
-    const basePrompt = getThemePrompt(theme, category);
-    const categoryInstruction = getCategorySpecificInstruction(category);
-    
-    // Extract mime type and clean base64 data correctly
-    const mimeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
-    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-    
-    // Remove the data URL prefix to get just the base64 string
-    const cleanBase64 = base64Image.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
+  
+  const basePrompt = getThemePrompt(theme, category);
+  const categoryInstruction = getCategorySpecificInstruction(category);
+  
+  // Extract mime type and clean base64 data correctly
+  const mimeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+  const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+  
+  // Remove the data URL prefix to get just the base64 string
+  const cleanBase64 = base64Image.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
 
-    const finalPrompt = `${basePrompt} The subject of the image is a ${category}. ${categoryInstruction} Ensure the product remains the main focal point, looks realistic, and blends naturally with the new background. High resolution.`;
+  const finalPrompt = `${basePrompt} The subject of the image is a ${category}. ${categoryInstruction} Ensure the product remains the main focal point, looks realistic, and blends naturally with the new background. High resolution.`;
 
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: mimeType,
-              data: cleanBase64
+  // Retry configuration
+  const MAX_RETRIES = 3;
+  let attempt = 0;
+
+  while (attempt < MAX_RETRIES) {
+    try {
+      const response = await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: cleanBase64
+              }
+            },
+            {
+              text: finalPrompt
             }
-          },
-          {
-            text: finalPrompt
+          ]
+        },
+        config: {
+          imageConfig: {
+            aspectRatio: ratio,
           }
-        ]
-      },
-      config: {
-        imageConfig: {
-          aspectRatio: ratio,
+        }
+      });
+
+      if (!response.candidates || response.candidates.length === 0) {
+          throw new Error("No candidates returned from API");
+      }
+
+      const candidate = response.candidates[0];
+
+      // Check for safety blocks
+      if (candidate.finishReason && candidate.finishReason !== "STOP") {
+           console.warn("Generation stopped due to:", candidate.finishReason);
+           // If it's a safety block, retrying won't help, so we throw immediately
+           throw new Error(`Generation blocked: ${candidate.finishReason} (Safety Filter)`);
+      }
+
+      // Extract image from response
+      if (candidate.content && candidate.content.parts) {
+        for (const part of candidate.content.parts) {
+          if (part.inlineData) {
+            return `data:image/jpeg;base64,${part.inlineData.data}`;
+          }
         }
       }
-    });
+      
+      return null; // Successful response structure but no image found (unlikely)
 
-    if (!response.candidates || response.candidates.length === 0) {
-        throw new Error("No candidates returned from API");
-    }
-
-    const candidate = response.candidates[0];
-
-    // Check for safety blocks or other finish reasons that prevent content generation
-    if (candidate.finishReason && candidate.finishReason !== "STOP") {
-         console.warn("Generation stopped due to:", candidate.finishReason);
-         throw new Error(`Generation blocked: ${candidate.finishReason} (Safety Filter or Limit)`);
-    }
-
-    // Extract image from response
-    if (candidate.content && candidate.content.parts) {
-      for (const part of candidate.content.parts) {
-        if (part.inlineData) {
-          return `data:image/jpeg;base64,${part.inlineData.data}`;
-        }
+    } catch (error: any) {
+      attempt++;
+      
+      // Check if it's a 429 error or similar capacity error
+      const isRateLimit = error.message?.includes('429') || error.message?.includes('Too Many Requests') || error.status === 429;
+      
+      if (isRateLimit && attempt < MAX_RETRIES) {
+        // Exponential backoff with a generous start for free tier (4s, 8s, 16s)
+        const waitTime = Math.pow(2, attempt) * 2000; 
+        console.warn(`Rate limit hit. Retrying in ${waitTime}ms (Attempt ${attempt + 1}/${MAX_RETRIES})...`);
+        await delay(waitTime);
+        continue;
       }
+      
+      console.error("Gemini Generation Error:", error);
+      throw error;
     }
-    
-    return null;
-
-  } catch (error) {
-    console.error("Gemini Generation Error:", error);
-    throw error;
   }
+  
+  return null;
 };
