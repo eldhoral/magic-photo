@@ -247,8 +247,7 @@ export const generateGeminiPlan = async (
   goal: string,
   month: string
 ): Promise<ContentPlanItem[]> => {
-  try {
-    const prompt = `Generate a 30-day Instagram content plan for a brand in the "${niche}" niche. 
+  const prompt = `Generate a 30-day Instagram content plan for a brand in the "${niche}" niche. 
     The main goal is "${goal}". 
     For the month of: ${month}.
     
@@ -261,34 +260,56 @@ export const generateGeminiPlan = async (
     - visualIdea (Description of what the image/video should look like)
     `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash", // Using Flash for fast text generation
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              day: { type: Type.NUMBER },
-              type: { type: Type.STRING }, // Simplified for schema, we cast later
-              title: { type: Type.STRING },
-              caption: { type: Type.STRING },
-              visualIdea: { type: Type.STRING }
-            },
-            required: ["day", "type", "title", "caption", "visualIdea"]
+  const MAX_RETRIES = 3;
+  let attempt = 0;
+
+  while (attempt < MAX_RETRIES) {
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview", // Updated to recommended text model
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                day: { type: Type.NUMBER },
+                type: { type: Type.STRING },
+                title: { type: Type.STRING },
+                caption: { type: Type.STRING },
+                visualIdea: { type: Type.STRING }
+              },
+              required: ["day", "type", "title", "caption", "visualIdea"]
+            }
           }
         }
-      }
-    });
+      });
 
-    const text = response.text;
-    if (!text) return [];
-    
-    return JSON.parse(text) as ContentPlanItem[];
-  } catch (error) {
-    console.error("Gemini Plan Error:", error);
-    throw error;
+      const text = response.text;
+      if (!text) return [];
+      
+      return JSON.parse(text) as ContentPlanItem[];
+    } catch (error: any) {
+      attempt++;
+      
+      // Handle 503 Overloaded and 429 Too Many Requests
+      const isOverloaded = error.message?.includes('503') || error.status === 503 || error.message?.includes('overloaded');
+      const isRateLimit = error.message?.includes('429') || error.message?.includes('Too Many Requests') || error.status === 429;
+      
+      if ((isOverloaded || isRateLimit) && attempt < MAX_RETRIES) {
+        // Exponential backoff
+        const waitTime = Math.pow(2, attempt) * 2000; // 4s, 8s, 16s
+        console.warn(`Gemini API ${isOverloaded ? 'overloaded' : 'rate limited'}. Retrying in ${waitTime}ms (Attempt ${attempt}/${MAX_RETRIES})...`);
+        await delay(waitTime);
+        continue;
+      }
+      
+      console.error("Gemini Plan Error:", error);
+      throw error;
+    }
   }
+  
+  throw new Error("Failed to generate plan after multiple attempts");
 };
