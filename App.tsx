@@ -3,9 +3,9 @@ import { FileUploader } from './components/FileUploader';
 import { Button } from './components/Button';
 import { ResultCard } from './components/ResultCard';
 import { Calendar } from './components/Calendar';
-import { ThemeStyle, AspectRatio, GeneratedImage, ProductCategory, AIProvider, ContentPlanItem } from './types';
-import { generateProductShot, generateGeminiPlan } from './services/geminiService';
-import { generateOpenAIShot, generateOpenAIPlan } from './services/openaiService';
+import { ThemeStyle, AspectRatio, GeneratedImage, ProductCategory, AIProvider, ContentPlanItem, MediaType } from './types';
+import { generateProductShot, generateProductVideo, generateGeminiPlan } from './services/geminiService';
+import { generateOpenAIShot, generateOpenAIPlan, generateOpenAIVideo } from './services/openaiService';
 
 type ViewMode = 'studio' | 'planner';
 
@@ -22,6 +22,7 @@ const App: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [results, setResults] = useState<GeneratedImage[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState<MediaType>(MediaType.IMAGE);
 
   // --- Planner State ---
   const [plannerNiche, setPlannerNiche] = useState('');
@@ -33,15 +34,23 @@ const App: React.FC = () => {
   // --- Shared State ---
   const [selectedProvider, setSelectedProvider] = useState<AIProvider>(AIProvider.GEMINI);
 
-  // Update default model when provider changes (only affects Studio defaults mostly)
+  // Update default model when provider OR media type changes
   useEffect(() => {
     if (selectedProvider === AIProvider.GEMINI) {
-      setCustomModelId('gemini-2.5-flash-image');
+      if (mediaType === MediaType.VIDEO) {
+          setCustomModelId('veo-3.1-fast-generate-preview');
+      } else {
+          setCustomModelId('gemini-2.5-flash-image');
+      }
     } else {
-      setCustomModelId('gpt-4o'); 
+      if (mediaType === MediaType.VIDEO) {
+          setCustomModelId('sora-2-pro');
+      } else {
+          setCustomModelId('gpt-4o'); 
+      }
     }
     setIsCustomModel(false);
-  }, [selectedProvider]);
+  }, [selectedProvider, mediaType]);
 
   const handleImageSelected = (base64: string) => {
     setBaseImage(base64);
@@ -58,11 +67,23 @@ const App: React.FC = () => {
     try {
       const promises = attempts.map(async (i) => {
          let url: string | null = null;
-         if (selectedProvider === AIProvider.GEMINI) {
-             url = await generateProductShot(baseImage, selectedTheme, selectedRatio, selectedCategory, customModelId);
+         let type = MediaType.IMAGE;
+
+         if (mediaType === MediaType.VIDEO) {
+             if (selectedProvider === AIProvider.GEMINI) {
+                 url = await generateProductVideo(baseImage, selectedTheme, selectedRatio, selectedCategory, customModelId);
+             } else {
+                 url = await generateOpenAIVideo(baseImage, selectedTheme, selectedRatio, selectedCategory, customModelId);
+             }
+             type = MediaType.VIDEO;
          } else {
-             url = await generateOpenAIShot(baseImage, selectedTheme, selectedRatio, selectedCategory, customModelId);
+             if (selectedProvider === AIProvider.GEMINI) {
+                 url = await generateProductShot(baseImage, selectedTheme, selectedRatio, selectedCategory, customModelId);
+             } else {
+                 url = await generateOpenAIShot(baseImage, selectedTheme, selectedRatio, selectedCategory, customModelId);
+             }
          }
+
          return url ? {
             id: Date.now().toString() + i,
             url,
@@ -70,16 +91,18 @@ const App: React.FC = () => {
             ratio: selectedRatio,
             category: selectedCategory,
             timestamp: Date.now(),
-            provider: selectedProvider
+            provider: selectedProvider,
+            type
          } : null;
       });
 
-      const newImages = (await Promise.all(promises)).filter((img): img is GeneratedImage => img !== null);
-      setResults(prev => [...newImages, ...prev]);
+      const newAssets = (await Promise.all(promises)).filter((img): img is GeneratedImage => img !== null);
+      setResults(prev => [...newAssets, ...prev]);
     } catch (err: any) {
       console.error(err);
-      let errorMessage = "Failed to generate images.";
+      let errorMessage = "Failed to generate assets.";
       if (err.message) errorMessage = err.message;
+      if (errorMessage.includes("API Key")) errorMessage = "Billing Check: " + errorMessage;
       setError(errorMessage);
     } finally {
       setIsGenerating(false);
@@ -111,7 +134,8 @@ const App: React.FC = () => {
   const handleDownload = (image: GeneratedImage) => {
     const link = document.createElement('a');
     link.href = image.url;
-    link.download = `marketplace-${image.theme.toLowerCase().replace(/\s/g, '-')}-${Date.now()}.jpg`;
+    const ext = image.type === MediaType.VIDEO ? 'mp4' : 'jpg';
+    link.download = `marketplace-${image.theme.toLowerCase().replace(/\s/g, '-')}-${Date.now()}.${ext}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -180,48 +204,82 @@ const App: React.FC = () => {
                 <section>
                      <h2 className="text-sm font-semibold text-slate-900 mb-3 uppercase tracking-wider">2. Configuration</h2>
                      <div className="space-y-6">
+                        
+                        {/* Format Selection (Image vs Video) */}
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Output Format</label>
+                            <div className="flex bg-slate-100 p-1 rounded-md">
+                                <button
+                                    onClick={() => setMediaType(MediaType.IMAGE)}
+                                    className={`flex-1 py-1.5 text-xs font-medium rounded transition-all ${mediaType === MediaType.IMAGE ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}
+                                >
+                                    Still Image
+                                </button>
+                                <button
+                                    onClick={() => setMediaType(MediaType.VIDEO)}
+                                    className={`flex-1 py-1.5 text-xs font-medium rounded transition-all ${mediaType === MediaType.VIDEO ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}
+                                >
+                                    Video Ad
+                                </button>
+                            </div>
+                        </div>
+
                         {/* Model Selector */}
                         <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-2">
-                            AI Model 
-                          </label>
-                          {!isCustomModel ? (
-                              <select 
-                                value={customModelId}
-                                onChange={(e) => {
-                                    if (e.target.value === 'custom') {
-                                        setIsCustomModel(true);
-                                        setCustomModelId('');
-                                    } else {
-                                        setCustomModelId(e.target.value);
-                                    }
-                                }}
-                                className="block w-full px-3 py-2 text-sm border border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md bg-white text-slate-900 shadow-sm"
-                              >
-                                {selectedProvider === AIProvider.GEMINI ? (
-                                  <>
-                                    <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
-                                    <option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp</option>
-                                  </>
-                                ) : (
-                                  <>
-                                     <option value="gpt-4o">gpt-4o (Vision + DALL-E)</option>
-                                     <option value="dall-e-3">dall-e-3 (Text Only)</option>
-                                  </>
-                                )}
-                                <option value="custom">Other / Custom...</option>
-                              </select>
-                          ) : (
-                              <div className="flex gap-2">
-                                  <input 
-                                    type="text" 
+                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                AI Model 
+                            </label>
+                            {!isCustomModel ? (
+                                <select 
                                     value={customModelId}
-                                    onChange={(e) => setCustomModelId(e.target.value)}
+                                    onChange={(e) => {
+                                        if (e.target.value === 'custom') {
+                                            setIsCustomModel(true);
+                                            setCustomModelId('');
+                                        } else {
+                                            setCustomModelId(e.target.value);
+                                        }
+                                    }}
                                     className="block w-full px-3 py-2 text-sm border border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md bg-white text-slate-900 shadow-sm"
-                                  />
-                                  <button onClick={() => setIsCustomModel(false)} className="px-2 text-xs text-slate-500">Cancel</button>
-                              </div>
-                          )}
+                                >
+                                    {selectedProvider === AIProvider.GEMINI ? (
+                                        mediaType === MediaType.VIDEO ? (
+                                            <>
+                                                <option value="veo-3.1-fast-generate-preview">veo-3.1-fast-generate-preview</option>
+                                                <option value="veo-3.1-generate-preview">veo-3.1-generate-preview</option>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
+                                                <option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp</option>
+                                            </>
+                                        )
+                                    ) : (
+                                        mediaType === MediaType.VIDEO ? (
+                                            <>
+                                                <option value="sora-2-pro">sora-2-pro</option>
+                                                <option value="sora-2">sora-2</option>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <option value="gpt-4o">gpt-4o (Vision + DALL-E)</option>
+                                                <option value="dall-e-3">dall-e-3 (Text Only)</option>
+                                            </>
+                                        )
+                                    )}
+                                    <option value="custom">Other / Custom...</option>
+                                </select>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        value={customModelId}
+                                        onChange={(e) => setCustomModelId(e.target.value)}
+                                        className="block w-full px-3 py-2 text-sm border border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md bg-white text-slate-900 shadow-sm"
+                                    />
+                                    <button onClick={() => setIsCustomModel(false)} className="px-2 text-xs text-slate-500">Cancel</button>
+                                </div>
+                            )}
                         </div>
 
                         <div>
@@ -236,7 +294,9 @@ const App: React.FC = () => {
                         </div>
                         
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Style</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                {mediaType === MediaType.VIDEO ? 'Visual Style & Motion' : 'Style Theme'}
+                            </label>
                             <div className="grid grid-cols-1 gap-2">
                                 {Object.values(ThemeStyle).map((style) => (
                                     <button
@@ -253,16 +313,29 @@ const App: React.FC = () => {
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">Ratio</label>
                             <div className="grid grid-cols-2 gap-2">
-                                {Object.values(AspectRatio).map((ratio) => (
-                                    <button
-                                        key={ratio}
-                                        onClick={() => setSelectedRatio(ratio)}
-                                        className={`px-3 py-2 text-xs border rounded-md ${selectedRatio === ratio ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600'}`}
-                                    >
-                                        {ratio}
-                                    </button>
-                                ))}
+                                {Object.values(AspectRatio).map((ratio) => {
+                                    // Veo mainly supports 16:9 or 9:16 (via 720p/1080p settings)
+                                    // We will disable 1:1 and 4:3 for video to avoid confusion or resize internally
+                                    const isVideoUnsupported = mediaType === MediaType.VIDEO && (ratio === AspectRatio.SQUARE || ratio === AspectRatio.LANDSCAPE);
+                                    
+                                    return (
+                                        <button
+                                            key={ratio}
+                                            disabled={isVideoUnsupported}
+                                            onClick={() => setSelectedRatio(ratio)}
+                                            className={`px-3 py-2 text-xs border rounded-md transition-all 
+                                                ${selectedRatio === ratio ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600'}
+                                                ${isVideoUnsupported ? 'opacity-30 cursor-not-allowed' : ''}
+                                            `}
+                                        >
+                                            {ratio}
+                                        </button>
+                                    )
+                                })}
                             </div>
+                            {mediaType === MediaType.VIDEO && (
+                                <p className="text-[10px] text-amber-600 mt-1">Video generation optimized for 16:9 (Landscape) or 3:4 (Portrait).</p>
+                            )}
                         </div>
                      </div>
                 </section>
@@ -345,7 +418,7 @@ const App: React.FC = () => {
                     disabled={!baseImage}
                     className="w-full shadow-lg"
                 >
-                    Generate Product Shot
+                    {mediaType === MediaType.VIDEO ? 'Generate Video Ad' : 'Generate Product Shot'}
                 </Button>
             ) : (
                 <Button 
@@ -391,7 +464,7 @@ const App: React.FC = () => {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                 </svg>
                             </div>
-                            <p className="text-lg font-medium text-slate-600">No images generated yet</p>
+                            <p className="text-lg font-medium text-slate-600">No assets generated yet</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6">

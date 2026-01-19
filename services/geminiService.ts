@@ -3,6 +3,7 @@ import { AspectRatio, ThemeStyle, ProductCategory, ContentPlanItem } from "../ty
 
 const apiKey = process.env.API_KEY;
 
+// Note: For Veo, we re-instantiate inside the function to ensure we get the latest selected key if needed
 const ai = new GoogleGenAI({ apiKey });
 
 const getThemePrompt = (theme: ThemeStyle, category: ProductCategory): string => {
@@ -53,7 +54,7 @@ export const generateProductShot = async (
   theme: ThemeStyle,
   ratio: AspectRatio,
   category: ProductCategory,
-  modelId: string = 'gemini-2.5-flash'
+  modelId: string = 'gemini-2.5-flash-image'
 ): Promise<string | null> => {
   
   const basePrompt = getThemePrompt(theme, category);
@@ -91,7 +92,7 @@ export const generateProductShot = async (
         },
         config: {
           imageConfig: {
-            aspectRatio: ratio,
+            aspectRatio: ratio === AspectRatio.VERTICAL ? AspectRatio.PORTRAIT : ratio, // Map 9:16 to 3:4 for image gen if needed, or rely on model support
           }
         }
       });
@@ -144,6 +145,100 @@ export const generateProductShot = async (
   }
   
   return null;
+};
+
+export const generateProductVideo = async (
+  base64Image: string,
+  theme: ThemeStyle,
+  ratio: AspectRatio,
+  category: ProductCategory,
+  modelId: string = 'veo-3.1-fast-generate-preview'
+): Promise<string | null> => {
+
+  // 1. Veo Requirement: User must select a paid API Key
+  if ((window as any).aistudio && (window as any).aistudio.hasSelectedApiKey) {
+    const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+    if (!hasKey) {
+       await (window as any).aistudio.openSelectKey();
+       // Race condition check: Assume successful selection after dialog closes or throw to let user try again
+       if (!await (window as any).aistudio.hasSelectedApiKey()) {
+          throw new Error("A paid API Key is required for Video Generation. Please select one to continue.");
+       }
+    }
+  }
+
+  // Always Create new instance to pick up the potentially newly selected key
+  const freshAi = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+  // 2. Prepare Inputs
+  const mimeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+  const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+  const cleanBase64 = base64Image.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
+
+  // 3. Create a Motion-specific prompt based on theme
+  let motionPrompt = "";
+  switch(theme) {
+      case ThemeStyle.CLEAN_STUDIO: motionPrompt = "Slow, cinematic camera pan around the product. Professional studio lighting."; break;
+      case ThemeStyle.COZY_LIVING: motionPrompt = "Gentle handheld camera movement, soft light flickering, warm atmosphere."; break;
+      case ThemeStyle.NATURE_OUTDOOR: motionPrompt = "Leaves swaying gently in the background, sun flare, organic movement."; break;
+      case ThemeStyle.LUXURY_DARK: motionPrompt = "Dramatic lighting reveal, slow glint of light on the product edges."; break;
+      case ThemeStyle.KITCHEN_BRIGHT: motionPrompt = "Bright and airy, soft morning light movement."; break;
+      case ThemeStyle.INDUSTRIAL: motionPrompt = "Steady cam tracking shot, sharp focus, industrial ambiance."; break;
+      default: motionPrompt = "Cinematic product showcase, slow motion, high quality."; break;
+  }
+
+  const fullPrompt = `A high quality, photorealistic video of a ${category.toLowerCase()}. ${motionPrompt} The product should remain consistent.`;
+
+  // Veo supports 16:9 or 9:16 primarily for best results. Mapping 1:1 to 9:16 for social media.
+  let veoRatio = '16:9';
+  if (ratio === AspectRatio.PORTRAIT || ratio === AspectRatio.SQUARE || ratio === AspectRatio.VERTICAL) veoRatio = '9:16';
+  else veoRatio = '16:9';
+
+  console.log("Starting Veo Generation:", { fullPrompt, veoRatio, modelId });
+
+  try {
+      let operation = await freshAi.models.generateVideos({
+        model: modelId,
+        prompt: fullPrompt,
+        image: {
+            imageBytes: cleanBase64,
+            mimeType: mimeType
+        },
+        config: {
+            numberOfVideos: 1,
+            resolution: '720p',
+            aspectRatio: veoRatio
+        }
+      });
+
+      // 4. Polling Loop
+      console.log("Polling for video...");
+      while (!operation.done) {
+        await delay(5000); // Poll every 5 seconds
+        operation = await freshAi.operations.getVideosOperation({ operation: operation });
+      }
+
+      // 5. Fetch Result
+      if (operation.response?.generatedVideos?.[0]?.video?.uri) {
+          const videoUri = operation.response.generatedVideos[0].video.uri;
+          // Append Key for download
+          const fetchUrl = `${videoUri}&key=${process.env.API_KEY}`;
+          
+          // Fetch blob to make it playable in browser without CORS/Auth issues sometimes
+          const res = await fetch(fetchUrl);
+          const blob = await res.blob();
+          return URL.createObjectURL(blob);
+      }
+
+      throw new Error("Video generation completed but no video URI was returned.");
+
+  } catch (error: any) {
+      console.error("Veo Error:", error);
+      if (error.message.includes("404")) {
+         throw new Error("Veo model not found. Ensure your API Key project has access to Vertex AI/Gemini API.");
+      }
+      throw error;
+  }
 };
 
 export const generateGeminiPlan = async (

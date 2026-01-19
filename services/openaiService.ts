@@ -8,6 +8,7 @@ const getOpenAISize = (ratio: AspectRatio): string => {
     case AspectRatio.PORTRAIT: return "1024x1792";
     case AspectRatio.LANDSCAPE: return "1792x1024";
     case AspectRatio.WIDE: return "1792x1024";
+    case AspectRatio.VERTICAL: return "1080x1920"; // Approximate for Video
     default: return "1024x1024";
   }
 };
@@ -153,6 +154,55 @@ export const generateOpenAIShot = async (
 
   } catch (error) {
     console.error("OpenAI Generation Error:", error);
+    throw error;
+  }
+};
+
+export const generateOpenAIVideo = async (
+  base64Image: string,
+  theme: ThemeStyle,
+  ratio: AspectRatio,
+  category: ProductCategory,
+  modelId: string
+): Promise<string | null> => {
+
+  const themeInstructions = getThemePrompt(theme, category);
+  const prompt = `Create a high quality video of the provided product image. ${themeInstructions} The video should be professional, cinematic, and keep the product as the focal point.`;
+  
+  // Use a video-friendly resolution (Full HD if possible, or standard)
+  const size = "1920x1080"; 
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/videos/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: modelId, // sora-2-pro or sora-2
+        prompt: prompt,
+        image: base64Image, // Assuming endpoint accepts base64 similar to vision
+        size: size,
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error?.message || `OpenAI Video API Error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.data && data.data.length > 0) {
+      // Assuming it returns a URL like DALL-E or Veo
+      return data.data[0].url;
+    }
+    
+    return null;
+
+  } catch (error) {
+    console.error("OpenAI Video Error:", error);
     throw error;
   }
 };

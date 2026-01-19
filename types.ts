@@ -2,7 +2,8 @@ export enum AspectRatio {
   SQUARE = '1:1',
   PORTRAIT = '3:4',
   LANDSCAPE = '4:3',
-  WIDE = '16:9'
+  WIDE = '16:9',
+  VERTICAL = '9:16'
 }
 
 export enum ProductCategory {
@@ -32,6 +33,11 @@ export enum AIProvider {
   OPENAI = 'OpenAI (ChatGPT)'
 }
 
+export enum MediaType {
+  IMAGE = 'image',
+  VIDEO = 'video'
+}
+
 export interface GeneratedImage {
   id: string;
   url: string;
@@ -40,6 +46,7 @@ export interface GeneratedImage {
   category: ProductCategory;
   timestamp: number;
   provider: AIProvider;
+  type: MediaType;
 }
 
 export interface GenerationConfig {
