@@ -1,5 +1,5 @@
-import { GoogleGenAI } from "@google/genai";
-import { AspectRatio, ThemeStyle, ProductCategory } from "../types";
+import { GoogleGenAI, Type } from "@google/genai";
+import { AspectRatio, ThemeStyle, ProductCategory, ContentPlanItem } from "../types";
 
 const apiKey = process.env.API_KEY;
 
@@ -144,4 +144,55 @@ export const generateProductShot = async (
   }
   
   return null;
+};
+
+export const generateGeminiPlan = async (
+  niche: string,
+  goal: string,
+  month: string
+): Promise<ContentPlanItem[]> => {
+  try {
+    const prompt = `Generate a 30-day Instagram content plan for a brand in the "${niche}" niche. 
+    The main goal is "${goal}". 
+    For the month of: ${month}.
+    
+    Return a structured JSON array with 30 items (one for each day).
+    Each item must have:
+    - day (number 1-30)
+    - type (Post, Reel, or Story)
+    - title (Short catchy title)
+    - caption (A brief caption idea)
+    - visualIdea (Description of what the image/video should look like)
+    `;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash", // Using Flash for fast text generation
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              day: { type: Type.NUMBER },
+              type: { type: Type.STRING }, // Simplified for schema, we cast later
+              title: { type: Type.STRING },
+              caption: { type: Type.STRING },
+              visualIdea: { type: Type.STRING }
+            },
+            required: ["day", "type", "title", "caption", "visualIdea"]
+          }
+        }
+      }
+    });
+
+    const text = response.text;
+    if (!text) return [];
+    
+    return JSON.parse(text) as ContentPlanItem[];
+  } catch (error) {
+    console.error("Gemini Plan Error:", error);
+    throw error;
+  }
 };

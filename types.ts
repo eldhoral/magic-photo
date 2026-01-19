@@ -27,6 +27,11 @@ export enum ThemeStyle {
   INDUSTRIAL = 'Industrial Concrete'
 }
 
+export enum AIProvider {
+  GEMINI = 'Google Gemini',
+  OPENAI = 'OpenAI (ChatGPT)'
+}
+
 export interface GeneratedImage {
   id: string;
   url: string;
@@ -34,6 +39,7 @@ export interface GeneratedImage {
   ratio: AspectRatio;
   category: ProductCategory;
   timestamp: number;
+  provider: AIProvider;
 }
 
 export interface GenerationConfig {
@@ -41,4 +47,12 @@ export interface GenerationConfig {
   ratio: AspectRatio;
   category: ProductCategory;
   customPrompt?: string;
+}
+
+export interface ContentPlanItem {
+  day: number;
+  type: 'Post' | 'Reel' | 'Story';
+  title: string;
+  caption: string;
+  visualIdea: string;
 }
