@@ -30,7 +30,8 @@ export enum ThemeStyle {
 
 export enum AIProvider {
   GEMINI = 'Google Gemini',
-  OPENAI = 'OpenAI (ChatGPT)'
+  OPENAI = 'OpenAI (ChatGPT)',
+  OPENROUTER = 'OpenRouter'
 }
 
 export enum MediaType {

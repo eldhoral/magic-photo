@@ -78,7 +78,6 @@ const analyzeProductWithVision = async (base64Image: string, visionModelId: stri
 
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        // If the custom model (e.g. gpt-5) fails or doesn't exist, we might want to fallback or throw
         throw new Error(err.error?.message || `Vision Analysis Failed (${response.status})`);
     }
 
@@ -254,7 +253,8 @@ export const generateOpenAIPlan = async (
     });
 
     if (!response.ok) {
-        throw new Error(`OpenAI Plan Failed: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `OpenAI Plan Failed: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();

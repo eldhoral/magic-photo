@@ -6,6 +6,7 @@ import { Calendar } from './components/Calendar';
 import { ThemeStyle, AspectRatio, GeneratedImage, ProductCategory, AIProvider, ContentPlanItem, MediaType } from './types';
 import { generateProductShot, generateProductVideo, generateGeminiPlan } from './services/geminiService';
 import { generateOpenAIShot, generateOpenAIPlan, generateOpenAIVideo } from './services/openaiService';
+import { generateOpenRouterShot, generateOpenRouterPlan, generateOpenRouterVideo } from './services/openRouterService';
 
 type ViewMode = 'studio' | 'planner';
 
@@ -36,21 +37,35 @@ const App: React.FC = () => {
 
   // Update default model when provider OR media type changes
   useEffect(() => {
+    setIsCustomModel(false);
+
     if (selectedProvider === AIProvider.GEMINI) {
       if (mediaType === MediaType.VIDEO) {
           setCustomModelId('veo-3.1-fast-generate-preview');
       } else {
           setCustomModelId('gemini-2.5-flash-image');
       }
-    } else {
+    } else if (selectedProvider === AIProvider.OPENAI) {
       if (mediaType === MediaType.VIDEO) {
           setCustomModelId('sora-2-pro');
       } else {
           setCustomModelId('gpt-4o'); 
       }
+    } else if (selectedProvider === AIProvider.OPENROUTER) {
+      if (view === 'planner') {
+         setCustomModelId('xiaomi/mimo-v2-flash:free');
+      } else {
+         // Studio View
+         if (mediaType === MediaType.IMAGE) {
+            setCustomModelId('sourceful/riverflow-v2-fast-preview');
+         } else {
+            // Video Ad - No default image for OpenRouter video
+            setCustomModelId(''); 
+            setIsCustomModel(true); // Force custom input since there is no default
+         }
+      }
     }
-    setIsCustomModel(false);
-  }, [selectedProvider, mediaType]);
+  }, [selectedProvider, mediaType, view]);
 
   const handleImageSelected = (base64: string) => {
     setBaseImage(base64);
@@ -72,15 +87,20 @@ const App: React.FC = () => {
          if (mediaType === MediaType.VIDEO) {
              if (selectedProvider === AIProvider.GEMINI) {
                  url = await generateProductVideo(baseImage, selectedTheme, selectedRatio, selectedCategory, customModelId);
-             } else {
+             } else if (selectedProvider === AIProvider.OPENAI) {
                  url = await generateOpenAIVideo(baseImage, selectedTheme, selectedRatio, selectedCategory, customModelId);
+             } else if (selectedProvider === AIProvider.OPENROUTER) {
+                 if (!customModelId) throw new Error("Please enter a model ID for OpenRouter Video generation.");
+                 url = await generateOpenRouterVideo(baseImage, selectedTheme, selectedRatio, selectedCategory, customModelId);
              }
              type = MediaType.VIDEO;
          } else {
              if (selectedProvider === AIProvider.GEMINI) {
                  url = await generateProductShot(baseImage, selectedTheme, selectedRatio, selectedCategory, customModelId);
-             } else {
+             } else if (selectedProvider === AIProvider.OPENAI) {
                  url = await generateOpenAIShot(baseImage, selectedTheme, selectedRatio, selectedCategory, customModelId);
+             } else if (selectedProvider === AIProvider.OPENROUTER) {
+                 url = await generateOpenRouterShot(baseImage, selectedTheme, selectedRatio, selectedCategory, customModelId);
              }
          }
 
@@ -119,8 +139,10 @@ const App: React.FC = () => {
         let items: ContentPlanItem[] = [];
         if (selectedProvider === AIProvider.GEMINI) {
             items = await generateGeminiPlan(plannerNiche, plannerGoal, plannerMonth);
-        } else {
+        } else if (selectedProvider === AIProvider.OPENAI) {
             items = await generateOpenAIPlan(plannerNiche, plannerGoal, plannerMonth);
+        } else if (selectedProvider === AIProvider.OPENROUTER) {
+            items = await generateOpenRouterPlan(plannerNiche, plannerGoal, plannerMonth, customModelId || 'xiaomi/mimo-v2-flash:free');
         }
         setPlanItems(items);
     } catch (err: any) {
@@ -254,7 +276,7 @@ const App: React.FC = () => {
                                                 <option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp</option>
                                             </>
                                         )
-                                    ) : (
+                                    ) : selectedProvider === AIProvider.OPENAI ? (
                                         mediaType === MediaType.VIDEO ? (
                                             <>
                                                 <option value="sora-2-pro">sora-2-pro</option>
@@ -266,6 +288,15 @@ const App: React.FC = () => {
                                                 <option value="dall-e-3">dall-e-3 (Text Only)</option>
                                             </>
                                         )
+                                    ) : (
+                                        // OPENROUTER OPTIONS
+                                        mediaType === MediaType.VIDEO ? (
+                                            <option value="" disabled>Select Custom Model...</option>
+                                        ) : (
+                                            <>
+                                                <option value="sourceful/riverflow-v2-fast-preview">sourceful/riverflow-v2 (Default)</option>
+                                            </>
+                                        )
                                     )}
                                     <option value="custom">Other / Custom...</option>
                                 </select>
@@ -275,6 +306,7 @@ const App: React.FC = () => {
                                         type="text" 
                                         value={customModelId}
                                         onChange={(e) => setCustomModelId(e.target.value)}
+                                        placeholder="Enter model ID..."
                                         className="block w-full px-3 py-2 text-sm border border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md bg-white text-slate-900 shadow-sm"
                                     />
                                     <button onClick={() => setIsCustomModel(false)} className="px-2 text-xs text-slate-500">Cancel</button>
@@ -316,7 +348,7 @@ const App: React.FC = () => {
                                 {Object.values(AspectRatio).map((ratio) => {
                                     // Veo mainly supports 16:9 or 9:16 (via 720p/1080p settings)
                                     // We will disable 1:1 and 4:3 for video to avoid confusion or resize internally
-                                    const isVideoUnsupported = mediaType === MediaType.VIDEO && (ratio === AspectRatio.SQUARE || ratio === AspectRatio.LANDSCAPE);
+                                    const isVideoUnsupported = mediaType === MediaType.VIDEO && selectedProvider === AIProvider.GEMINI && (ratio === AspectRatio.SQUARE || ratio === AspectRatio.LANDSCAPE);
                                     
                                     return (
                                         <button
@@ -333,7 +365,7 @@ const App: React.FC = () => {
                                     )
                                 })}
                             </div>
-                            {mediaType === MediaType.VIDEO && (
+                            {mediaType === MediaType.VIDEO && selectedProvider === AIProvider.GEMINI && (
                                 <p className="text-[10px] text-amber-600 mt-1">Video generation optimized for 16:9 (Landscape) or 3:4 (Portrait).</p>
                             )}
                         </div>
@@ -345,6 +377,48 @@ const App: React.FC = () => {
               <>
                  <section>
                     <h2 className="text-sm font-semibold text-slate-900 mb-3 uppercase tracking-wider">Strategy</h2>
+                    
+                    {/* Model Selector for Planner */}
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Strategy Model
+                        </label>
+                         {!isCustomModel ? (
+                            <select 
+                                value={customModelId}
+                                onChange={(e) => {
+                                    if (e.target.value === 'custom') {
+                                        setIsCustomModel(true);
+                                        setCustomModelId('');
+                                    } else {
+                                        setCustomModelId(e.target.value);
+                                    }
+                                }}
+                                className="block w-full px-3 py-2 text-sm border border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md bg-white text-slate-900 shadow-sm"
+                            >
+                                {selectedProvider === AIProvider.GEMINI ? (
+                                    <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+                                ) : selectedProvider === AIProvider.OPENAI ? (
+                                    <option value="gpt-4o">gpt-4o</option>
+                                ) : (
+                                    <option value="xiaomi/mimo-v2-flash:free">xiaomi/mimo-v2-flash:free</option>
+                                )}
+                                <option value="custom">Other / Custom...</option>
+                            </select>
+                        ) : (
+                            <div className="flex gap-2">
+                                <input 
+                                    type="text" 
+                                    value={customModelId}
+                                    onChange={(e) => setCustomModelId(e.target.value)}
+                                    placeholder="Enter model ID..."
+                                    className="block w-full px-3 py-2 text-sm border border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md bg-white text-slate-900 shadow-sm"
+                                />
+                                <button onClick={() => setIsCustomModel(false)} className="px-2 text-xs text-slate-500">Cancel</button>
+                            </div>
+                        )}
+                    </div>
+
                     <div className="space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">Brand Niche</label>
@@ -395,7 +469,7 @@ const App: React.FC = () => {
                  <div className="bg-indigo-50 p-4 rounded-md border border-indigo-100">
                     <p className="text-xs text-indigo-700">
                         <b>Note:</b> Generating a plan uses 
-                        {selectedProvider === AIProvider.GEMINI ? ' Gemini 2.5 Flash' : ' GPT-4o'} 
+                        {selectedProvider === AIProvider.GEMINI ? ' Gemini 3 Flash' : selectedProvider === AIProvider.OPENAI ? ' GPT-4o' : ' Custom OpenRouter Model'} 
                         to create a tailored 30-day strategy.
                     </p>
                  </div>
