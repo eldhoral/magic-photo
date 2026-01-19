@@ -10,6 +10,7 @@ const App: React.FC = () => {
   const [selectedTheme, setSelectedTheme] = useState<ThemeStyle>(ThemeStyle.CLEAN_STUDIO);
   const [selectedRatio, setSelectedRatio] = useState<AspectRatio>(AspectRatio.SQUARE);
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory>(ProductCategory.GENERAL);
+  const [customModelId, setCustomModelId] = useState<string>('gemini-2.5-flash');
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [results, setResults] = useState<GeneratedImage[]>([]);
@@ -31,7 +32,7 @@ const App: React.FC = () => {
 
     try {
       const promises = attempts.map(async (i) => {
-         const url = await generateProductShot(baseImage, selectedTheme, selectedRatio, selectedCategory);
+         const url = await generateProductShot(baseImage, selectedTheme, selectedRatio, selectedCategory, customModelId);
          return url ? {
             id: Date.now().toString() + i,
             url,
@@ -59,6 +60,8 @@ const App: React.FC = () => {
              errorMessage = "Safety Filter Triggered. The model blocked this generation.";
          } else if (err.message.includes('API key')) { 
              errorMessage = "API Key error. Please check your configuration.";
+         } else if (err.message.includes('returned text instead')) {
+             errorMessage = err.message;
          } else {
              errorMessage = `Error: ${err.message}`;
          }
@@ -110,6 +113,23 @@ const App: React.FC = () => {
              <h2 className="text-sm font-semibold text-slate-900 mb-3 uppercase tracking-wider">2. Configuration</h2>
              
              <div className="space-y-6">
+                
+                {/* Model Selector - Added for troubleshooting */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    AI Model 
+                    <span className="text-xs text-slate-400 font-normal ml-1">(Editable)</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    value={customModelId}
+                    onChange={(e) => setCustomModelId(e.target.value)}
+                    className="block w-full px-3 py-2 text-sm border border-slate-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md bg-white shadow-sm"
+                    placeholder="e.g. gemini-2.5-flash"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Try <code>gemini-2.5-flash</code> or <code>gemini-3-flash</code>.</p>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Product Category</label>
                   <div className="relative">

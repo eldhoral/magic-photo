@@ -3,9 +3,6 @@ import { AspectRatio, ThemeStyle, ProductCategory } from "../types";
 
 const apiKey = process.env.API_KEY;
 
-// Use gemini-2.5-flash-image for general availability and speed as per guidelines
-const MODEL_NAME = 'gemini-2.5-flash-image';
-
 const ai = new GoogleGenAI({ apiKey });
 
 const getThemePrompt = (theme: ThemeStyle, category: ProductCategory): string => {
@@ -55,7 +52,8 @@ export const generateProductShot = async (
   base64Image: string,
   theme: ThemeStyle,
   ratio: AspectRatio,
-  category: ProductCategory
+  category: ProductCategory,
+  modelId: string = 'gemini-2.5-flash'
 ): Promise<string | null> => {
   
   const basePrompt = getThemePrompt(theme, category);
@@ -77,7 +75,7 @@ export const generateProductShot = async (
   while (attempt < MAX_RETRIES) {
     try {
       const response = await ai.models.generateContent({
-        model: MODEL_NAME,
+        model: modelId,
         contents: {
           parts: [
             {
@@ -107,7 +105,6 @@ export const generateProductShot = async (
       // Check for safety blocks
       if (candidate.finishReason && candidate.finishReason !== "STOP") {
            console.warn("Generation stopped due to:", candidate.finishReason);
-           // If it's a safety block, retrying won't help, so we throw immediately
            throw new Error(`Generation blocked: ${candidate.finishReason} (Safety Filter)`);
       }
 
@@ -120,7 +117,12 @@ export const generateProductShot = async (
         }
       }
       
-      return null; // Successful response structure but no image found (unlikely)
+      // If no image is found in the parts, checking if we got text instead (which means model doesn't support image gen)
+      if (candidate.content?.parts?.[0]?.text) {
+          throw new Error(`The model '${modelId}' returned text instead of an image. It might not support image generation. Try 'gemini-2.5-flash-image'.`);
+      }
+      
+      return null;
 
     } catch (error: any) {
       attempt++;
