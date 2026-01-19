@@ -59,8 +59,12 @@ export const generateProductShot = async (
     const basePrompt = getThemePrompt(theme, category);
     const categoryInstruction = getCategorySpecificInstruction(category);
     
-    // Ensure base64 string is clean
-    const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
+    // Extract mime type and clean base64 data correctly
+    const mimeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    
+    // Remove the data URL prefix to get just the base64 string
+    const cleanBase64 = base64Image.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
 
     const finalPrompt = `${basePrompt} The subject of the image is a ${category}. ${categoryInstruction} Ensure the product remains the main focal point, looks realistic, and blends naturally with the new background. High resolution.`;
 
@@ -70,7 +74,7 @@ export const generateProductShot = async (
         parts: [
           {
             inlineData: {
-              mimeType: 'image/jpeg', // Standardizing input type handling or assume input is jpeg/png compatible
+              mimeType: mimeType,
               data: cleanBase64
             }
           },
@@ -82,14 +86,25 @@ export const generateProductShot = async (
       config: {
         imageConfig: {
           aspectRatio: ratio,
-          // count: 1 // Default is 1
         }
       }
     });
 
+    if (!response.candidates || response.candidates.length === 0) {
+        throw new Error("No candidates returned from API");
+    }
+
+    const candidate = response.candidates[0];
+
+    // Check for safety blocks or other finish reasons that prevent content generation
+    if (candidate.finishReason && candidate.finishReason !== "STOP") {
+         console.warn("Generation stopped due to:", candidate.finishReason);
+         throw new Error(`Generation blocked: ${candidate.finishReason} (Safety Filter or Limit)`);
+    }
+
     // Extract image from response
-    if (response.candidates && response.candidates[0].content.parts) {
-      for (const part of response.candidates[0].content.parts) {
+    if (candidate.content && candidate.content.parts) {
+      for (const part of candidate.content.parts) {
         if (part.inlineData) {
           return `data:image/jpeg;base64,${part.inlineData.data}`;
         }

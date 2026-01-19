@@ -45,8 +45,25 @@ const App: React.FC = () => {
       const newImages = (await Promise.all(promises)).filter((img): img is GeneratedImage => img !== null);
       
       setResults(prev => [...newImages, ...prev]);
-    } catch (err) {
-      setError("Failed to generate images. Please try again or check your API limit.");
+    } catch (err: any) {
+      console.error(err);
+      let errorMessage = "Failed to generate images. Please try again.";
+      
+      // Better error parsing for the user
+      if (err.message) {
+         if (err.message.includes('429')) {
+             errorMessage = "Rate Limit Reached (429). Please wait a moment and try again.";
+         } else if (err.message.includes('400')) {
+             errorMessage = "Bad Request (400). The image format might be unsupported or key is invalid.";
+         } else if (err.message.includes('SAFETY')) {
+             errorMessage = "Safety Filter Triggered. The model blocked this generation.";
+         } else if (err.message.includes('API key')) { 
+             errorMessage = "API Key error. Please check your configuration.";
+         } else {
+             errorMessage = `Error: ${err.message}`;
+         }
+      }
+      setError(errorMessage);
     } finally {
       setIsGenerating(false);
     }
