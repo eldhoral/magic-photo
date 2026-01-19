@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
       // Polyfill for process.env to prevent ReferenceError in browser if bundler doesn't replace it
-      window.process = window.process || { env: { API_KEY: '' } };
+      window.process = window.process || { env: { API_KEY: '', GEMINI_API_KEY: '', OPENAI_API_KEY: '' } };
     </script>
     <style>
       body {

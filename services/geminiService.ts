@@ -1,7 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AspectRatio, ThemeStyle, ProductCategory, ContentPlanItem } from "../types";
 
-const apiKey = process.env.API_KEY;
+// Prioritize GEMINI_API_KEY, fallback to generic API_KEY if not present
+const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
 
 // Note: For Veo, we re-instantiate inside the function to ensure we get the latest selected key if needed
 const ai = new GoogleGenAI({ apiKey });
@@ -168,7 +169,7 @@ export const generateProductVideo = async (
   }
 
   // Always Create new instance to pick up the potentially newly selected key
-  const freshAi = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const freshAi = new GoogleGenAI({ apiKey: apiKey });
 
   // 2. Prepare Inputs
   const mimeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
@@ -222,7 +223,7 @@ export const generateProductVideo = async (
       if (operation.response?.generatedVideos?.[0]?.video?.uri) {
           const videoUri = operation.response.generatedVideos[0].video.uri;
           // Append Key for download
-          const fetchUrl = `${videoUri}&key=${process.env.API_KEY}`;
+          const fetchUrl = `${videoUri}&key=${apiKey}`;
           
           // Fetch blob to make it playable in browser without CORS/Auth issues sometimes
           const res = await fetch(fetchUrl);

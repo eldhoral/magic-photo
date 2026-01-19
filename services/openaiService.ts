@@ -1,6 +1,6 @@
 import { AspectRatio, ThemeStyle, ProductCategory, ContentPlanItem } from "../types";
 
-const apiKey = process.env.API_KEY;
+const apiKey = process.env.OPENAI_API_KEY;
 
 const getOpenAISize = (ratio: AspectRatio): string => {
   switch (ratio) {
