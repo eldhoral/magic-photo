@@ -26,8 +26,8 @@ const App: React.FC = () => {
     setIsGenerating(true);
     setError(null);
 
-    // Generate 3 variations based on the user request for "several" options
-    const attempts = [1, 2, 3];
+    // Reduced to 1 attempt to prevent hitting Free Tier Rate Limits (RPM)
+    const attempts = [1];
 
     try {
       const promises = attempts.map(async (i) => {
@@ -161,7 +161,7 @@ const App: React.FC = () => {
                 disabled={!baseImage}
                 className="w-full shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all"
             >
-                Generate 3 Variations
+                Generate Product Shot
             </Button>
         </div>
       </div>
